@@ -5,22 +5,22 @@ VERSION
        This README refers to knc.pl version 0.001.
 
 SYNOPSIS
-           Simple server:
+       Simple server:
 
-               knc.pl -l 127.0.0.1 12345
+           knc.pl -l 127.0.0.1 12345
 
-           Simple client:
+       Simple client:
 
-               knc.pl 127.0.0.1 12345
+           knc.pl 127.0.0.1 12345
 
-           Kerberized server:
+       Kerberized server:
 
-               knc.pl -l -K -N example -T /opt/etc/krb5.keytab 127.0.0.1 12345
+           knc.pl -l -K -N example -T /opt/etc/krb5.keytab 127.0.0.1 12345
 
-           Kerberized client:
+       Kerberized client:
 
-               kinit -f (You will need a TGT from your KDC first)
-               knc.pl -K -N example 127.0.0.1 12345
+           kinit -f (You will need a TGT from your KDC first)
+           knc.pl -K -N example 127.0.0.1 12345
 
 DIAGNOSTICS
        Run the program with the '--help' swith for alist of all available
