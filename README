@@ -1,0 +1,51 @@
+NAME
+       knc.pl - Eventual OpenBSD netcat clone with Kerberos support.
+
+VERSION
+       This README refers to knc.pl version 0.001.
+
+SYNOPSIS
+           Simple server:
+
+               knc.pl -l 127.0.0.1 12345
+
+           Simple client:
+
+               knc.pl 127.0.0.1 12345
+
+           Kerberized server:
+
+               knc.pl -l -K -N example -T /opt/etc/krb5.keytab 127.0.0.1 12345
+
+           Kerberized client:
+
+               kinit -f (You will need a TGT from your KDC first)
+               knc.pl -K -N example 127.0.0.1 12345
+
+DIAGNOSTICS
+       Run the program with the '--help' swith for alist of all available
+       options.
+
+AUTHOR
+       Ryan Corder, "ryanc at greengrey.org"
+
+KNOWN BUGS
+       Many of the features/switches from OpenBSD's netcat are not yet
+       implemented.
+
+       SIGINT currently causes many things to either spew warnings or not
+       close altogether.
+
+ACKNOWLEDGEMENTS
+       The OpenBSD project: <http://openbsd.org>
+
+       Author(s) of the AnyEvent framework:
+       <https://metacpan.org/release/AnyEvent>
+
+       Author(s) of Authen::Krb5: <https://metacpan.org/module/Authen::Krb5>
+
+COPYRIGHT & LICENSE
+       Copyright 2012 Ryan corder, All Rights Reserved.
+
+       This program is free software; you can redistribute it and/or modify it
+       under the same terms as Perl itself.
