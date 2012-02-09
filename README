@@ -1,10 +1,14 @@
-NAME
+KNC(1)                User Contributed Perl Documentation               KNC(1)
+
+
+
+NNAAMMEE
        knc.pl - Eventual OpenBSD netcat clone with Kerberos support.
 
-VERSION
+VVEERRSSIIOONN
        This README refers to knc.pl version 0.001.
 
-SYNOPSIS
+UUSSAAGGEE
        Simple server:
 
            knc.pl -l 127.0.0.1 12345
@@ -22,30 +26,52 @@ SYNOPSIS
            kinit -f (You will need a TGT from your KDC first)
            knc.pl -K -N example 127.0.0.1 12345
 
-DIAGNOSTICS
+RREEQQUUIIRREEDD AARRGGUUMMEENNTTSS
+       The Hostname/IP address and Port of the host you either want to connect
+       to or listen on are required.
+
+OOPPTTIIOONNSS
        Run the program with the '--help' swith for alist of all available
        options.
 
-AUTHOR
+DDEESSCCRRIIPPTTIIOONN
+       knc.pl aims to be a full clone of netcat that comes with OpenBSD.
+       Additionally, knc.pl supports Kerberos authentication in both client
+       and server modes.
+
+       As of this release, features are few.
+
+       For more information on OpenBSD's netcat, please see the current manual
+       at http://www.openbsd.org/cgi-bin/man.cgi?query=nc
+       <http://www.openbsd.org/cgi-bin/man.cgi?query=nc>
+
+AAUUTTHHOORR
        Ryan Corder, "ryanc at greengrey.org"
 
-KNOWN BUGS
+BBUUGGSS AANNDD LLIIMMIITTAATTIIOONNSS
        Many of the features/switches from OpenBSD's netcat are not yet
        implemented.
 
        SIGINT currently causes many things to either spew warnings or not
        close altogether.
 
-ACKNOWLEDGEMENTS
-       The OpenBSD project: <http://openbsd.org>
+AACCKKNNOOWWLLEEDDGGEEMMEENNTTSS
+       The OpenBSD project: <http://www.openbsd.org>
 
        Author(s) of the AnyEvent framework:
        <https://metacpan.org/release/AnyEvent>
 
        Author(s) of Authen::Krb5: <https://metacpan.org/module/Authen::Krb5>
 
-COPYRIGHT & LICENSE
+LLIICCEENNSSEE AANNDD CCOOPPYYRRIIGGHHTT
        Copyright 2012 Ryan corder, All Rights Reserved.
 
        This program is free software; you can redistribute it and/or modify it
        under the same terms as Perl itself.
+
+DDIIAAGGNNOOSSTTIICCSS
+CCOONNFFIIGGUURRAATTIIOONN
+DDEEPPEENNDDEENNCCIIEESS
+IINNCCOOMMPPAATTIIBBIILLIITTIIEESS
+EEXXIITT SSTTAATTUUSS
+perl v5.14.2                      2012-02-08                            KNC(1)
