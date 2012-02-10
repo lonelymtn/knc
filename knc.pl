@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-# Time-stamp: <2012-02-08 16:09:06 (ryanc)>
+# Time-stamp: <2012-02-09 23:40:14 (ryanc)>
 #
 # Author: Ryan Corder <ryanc@greengrey.org>
 # Description: knc.pl - Eventual OpenBSD netcat clone with Kerberos support
@@ -7,7 +7,7 @@
 use warnings;
 use strict;
 
-our $VERSION = '0.001';
+our $VERSION = '0.010';
 
 use AnyEvent;
 use AnyEvent::Handle;
@@ -30,21 +30,97 @@ my $port   = $ARGV[1];             # IO::Socket::INET does port validation
 my $ready  = AnyEvent->condvar;    # Set up our "main loop"
 my $socket = create_socket();      # Socket needed before Kerberos can setup
 
-# If we're doing Kerberos, go ahead and authenticate now
-if ( $opts{'K'} ) {
-    Authen::Krb5::init_context();
+# Set up Kerberos context
+$opts{'K'} && Authen::Krb5::init_context();
 
-    my $krb5_service = $opts{'N'} // 'example';
-    my $krb5_keytab  = $opts{'T'} // '/etc/krb5.keytab';
-    my $krb5_ac      = Authen::Krb5::AuthContext->new();
-    my $krb5_spn = Authen::Krb5::sname_to_principal( $host, $krb5_service,
+# Server mode
+if ( $opts{'l'} ) {
+
+    # Keep socket open after client disconnect
+    if ( $opts{'k'} ) {
+        while ( my $listener = $socket->accept() ) {
+            $ready = AnyEvent->condvar;
+
+            $opts{'K'} && setup_kerberos($listener);
+
+            my $stdin_handle  = setup_ae_handle( $listener, \*STDOUT );
+            my $socket_handle = setup_ae_handle( \*STDIN,   $listener );
+
+            $ready->recv;
+        }
+    }
+
+    # Close socket after client disconnect
+    else {
+        my $listener = $socket->accept();
+
+        $opts{'K'} && setup_kerberos($listener);
+
+        my $stdin_handle  = setup_ae_handle( $listener, \*STDOUT );
+        my $socket_handle = setup_ae_handle( \*STDIN,   $listener );
+
+        $ready->recv;
+    }
+}
+
+# Client mode
+else {
+    $opts{'K'} && setup_kerberos($socket);
+
+    my $stdin_handle  = setup_ae_handle( $socket, \*STDOUT );
+    my $socket_handle = setup_ae_handle( \*STDIN, $socket );
+
+    $ready->recv;
+}
+
+# Tear down Kerberos context
+$opts{'K'} && Authen::Krb5::free_context();
+
+exit;
+
+##
+## Subroutines
+##
+sub create_socket {
+    my $l_socket;
+
+    # Server mode
+    if ( $opts{'l'} ) {
+        $l_socket = IO::Socket::INET->new(
+            LocalAddr => $host,
+            LocalPort => $port,
+            Listen    => SOMAXCONN,
+            Proto     => 'tcp',
+            ReuseAddr => 1,
+        ) or die $EVAL_ERROR, "\n";
+    }
+
+    # Client mode
+    else {
+        $l_socket = IO::Socket::INET->new(
+            PeerAddr => $host,
+            PeerPort => $port,
+            Proto    => 'tcp',
+        ) or die $EVAL_ERROR, "\n";
+    }
+
+    return $l_socket;
+}
+
+sub setup_kerberos {
+    my $krb5_socket = shift;
+
+    my $krb5_service = defined( $opts{'N'} ) ? $opts{'N'} : 'example';
+    my $krb5_keytab = defined( $opts{'T'} ) ? $opts{'T'} : '/etc/krb5.keytab';
+    my $krb5_ac     = Authen::Krb5::AuthContext->new();
+    my $krb5_spn    = Authen::Krb5::sname_to_principal( $host, $krb5_service,
         KRB5_NT_SRV_HST );
 
     # Server context
     if ( $opts{'l'} ) {
         my $krb5_ktr = Authen::Krb5::kt_resolve("FILE:$krb5_keytab");
         my $krb5_recv =
-            Authen::Krb5::recvauth( $krb5_ac, $socket, 'V1', $krb5_spn,
+            Authen::Krb5::recvauth( $krb5_ac, $krb5_socket, 'V1', $krb5_spn,
             $krb5_ktr );
 
         if ($krb5_recv) {
@@ -62,130 +138,64 @@ if ( $opts{'K'} ) {
     else {
         my $krb5_cc     = Authen::Krb5::cc_default();
         my $krb5_client = Authen::Krb5::parse_name( $ENV{'USER'} );
-        my $krb5_send =
-            Authen::Krb5::sendauth( $krb5_ac, $socket, 'V1', $krb5_client,
-            $krb5_spn, AP_OPTS_MUTUAL_REQUIRED, 'knc', undef, $krb5_cc );
+        my $krb5_send   = Authen::Krb5::sendauth(
+            $krb5_ac,  $krb5_socket,
+            'V1',      $krb5_client,
+            $krb5_spn, AP_OPTS_MUTUAL_REQUIRED,
+            'knc',     undef,
+            $krb5_cc
+        );
 
         if ($krb5_send) {
             if ( $opts{'v'} ) {
-                print "Sent kerberos authentication info\n";
+                print "Sent kerberos authentication info for $ENV{'USER'}\n";
             }
         }
         else {
             die 'sendauth error: ' . Authen::Krb5::error() . "\n";
         }
     }
+
+    return 1;
 }
 
-# Set up our AnyEvent handles for STDIN and the socket
-my $stdin_handle  = setup_stdin_handle();
-my $socket_handle = setup_socket_handle();
+sub setup_ae_handle {
+    my ( $fh_in, $fh_out ) = @_;
 
-# "Main Loop"
-$ready->recv;
-
-if ( $opts{'K'} ) {
-    Authen::Krb5::free_context();
-}
-
-##
-## Subroutines
-##
-sub create_socket {
-    my $lsocket;
-
-    if ( $opts{'l'} ) {
-        my $listener = IO::Socket::INET->new(
-            LocalAddr => $host,
-            LocalPort => $port,
-            Listen    => 1,
-            ReuseAddr => $opts{'k'} ? 1 : 0,
-            Proto     => 'tcp',
-        ) or die $EVAL_ERROR, "\n";
-        $lsocket = $listener->accept();
-    }
-    else {
-        $lsocket = IO::Socket::INET->new(
-            PeerAddr  => $host,
-            PeerPort  => $port,
-            ReuseAddr => $opts{'k'} ? 1 : 0,
-            Proto     => 'tcp',
-        ) or die $EVAL_ERROR, "\n";
-    }
-
-    return $lsocket;
-}
-
-sub setup_socket_handle {
-    my $l_socket_handle = AnyEvent::Handle->new(
-        fh       => $socket,
+    my $ae_handle = AnyEvent::Handle->new(
+        fh       => $fh_in,
         no_delay => 1,
         on_eof   => sub {
-            my ($hdl) = @_;
-            shutdown $socket, 2;
-            close $socket or AE::log error => "Shutdown socket failed.\n";
-            undef $hdl;
+            my ($handle) = @_;
+            undef $handle;
             $ready->send;
         },
         on_error => sub {
-            my ( $hdl, $fatal, $msg ) = @_;
-            AE::log error => "$msg\n";
-            undef $hdl;
-            shutdown $socket, 2;
-            close $socket or AE::log error => "Shutdown socket failed.\n";
-            $ready->send;
+            my ( $handle, $fatal, $message ) = @_;
+            if ($fatal) {
+                $ready->croak($message);
+            }
+            else {
+                AE::log error => "$OS_ERROR\n";
+                undef $handle;
+                $ready->send;
+            }
         },
         on_read => sub {
             shift->unshift_read(
                 line => sub {
                     if ( $opts{'C'} ) {
-                        syswrite STDOUT, "$_[1]\r\n";
+                        syswrite $fh_out, "$_[1]\r\n";
                     }
                     else {
-                        syswrite STDOUT, "$_[1]\n";
+                        syswrite $fh_out, "$_[1]\n";
                     }
                 }
             );
         }
-    );
+    ) or AE::log fatal => "Couldn't create AE handle\n";
 
-    return $l_socket_handle;
-}
-
-sub setup_stdin_handle {
-    my $l_stdin_handle = AnyEvent::Handle->new(
-        fh       => \*STDIN,
-        no_delay => 1,
-        on_eof   => sub {
-            my ($hdl) = @_;
-            $hdl->destroy;
-            shutdown $socket, 2;
-            close $socket or AE::log error => "Shutdown socket failed.\n";
-            $ready->send;
-        },
-        on_error => sub {
-            my ( $hdl, $fatal, $msg ) = @_;
-            AE::log error => "$msg\n";
-            $hdl->destroy;
-            shutdown $socket, 2;
-            close $socket or AE::log error => "Shutdown socket failed.\n";
-            $ready->send;
-        },
-        on_read => sub {
-            shift->unshift_read(
-                line => sub {
-                    if ( $opts{'C'} ) {
-                        syswrite $socket, "$_[1]\r\n";
-                    }
-                    else {
-                        syswrite $socket, "$_[1]\n";
-                    }
-                }
-            );
-        }
-    );
-
-    return $l_stdin_handle;
+    return $ae_handle;
 }
 
 sub HELP_MESSAGE {
@@ -282,8 +292,8 @@ Ryan Corder, C<ryanc at greengrey.org>
 
 Many of the features/switches from OpenBSD's netcat are not yet implemented.
 
-SIGINT currently causes many things to either spew warnings or not close
-altogether.
+If the Server is in Kerberos mode, but the Client is not and the client
+connects, the server does not immediately close the connection.
 
 =head1 ACKNOWLEDGEMENTS
 

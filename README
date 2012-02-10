@@ -1,69 +1,68 @@
 NAME
-       knc.pl - Eventual OpenBSD netcat clone with Kerberos support.
+    knc.pl - Eventual OpenBSD netcat clone with Kerberos support.
 
 VERSION
-       This README refers to knc.pl version 0.001.
+    This README refers to knc.pl version 0.001.
 
 USAGE
-       Simple server:
+    Simple server:
 
-           knc.pl -l 127.0.0.1 12345
+        knc.pl -l 127.0.0.1 12345
 
-       Simple client:
+    Simple client:
 
-           knc.pl 127.0.0.1 12345
+        knc.pl 127.0.0.1 12345
 
-       Kerberized server:
+    Kerberized server:
 
-           knc.pl -l -K -N example -T /opt/etc/krb5.keytab 127.0.0.1 12345
+        knc.pl -l -K -N example -T /opt/etc/krb5.keytab 127.0.0.1 12345
 
-       Kerberized client:
+    Kerberized client:
 
-           kinit -f (You will need a TGT from your KDC first)
-           knc.pl -K -N example 127.0.0.1 12345
+        kinit -f (You will need a TGT from your KDC first)
+        knc.pl -K -N example 127.0.0.1 12345
 
 REQUIRED ARGUMENTS
-       The Hostname/IP address and Port of the host you either want to connect
-       to or listen on are required.
+    The Hostname/IP address and Port of the host you either want to connect
+    to or listen on are required.
 
 OPTIONS
-       Run the program with the '--help' swith for alist of all available
-       options.
+    Run the program with the '--help' swith for alist of all available
+    options.
 
 DESCRIPTION
-       knc.pl aims to be a full clone of netcat that comes with OpenBSD.
-       Additionally, knc.pl supports Kerberos authentication in both client
-       and server modes.
+    knc.pl aims to be a full clone of netcat that comes with OpenBSD.
+    Additionally, knc.pl supports Kerberos authentication in both client and
+    server modes.
 
-       As of this release, features are few.
+    As of this release, features are few.
 
-       For more information on OpenBSD's netcat, please see the current manual
-       at http://www.openbsd.org/cgi-bin/man.cgi?query=nc
-       <http://www.openbsd.org/cgi-bin/man.cgi?query=nc>
+    For more information on OpenBSD's netcat, please see the current manual
+    at <http://www.openbsd.org/cgi-bin/man.cgi?query=nc>
 
 AUTHOR
-       Ryan Corder, "ryanc at greengrey.org"
+    Ryan Corder, "ryanc at greengrey.org"
 
 BUGS AND LIMITATIONS
-       Many of the features/switches from OpenBSD's netcat are not yet
-       implemented.
+    Many of the features/switches from OpenBSD's netcat are not yet
+    implemented.
 
-       SIGINT currently causes many things to either spew warnings or not
-       close altogether.
+    If the Server is in Kerberos mode, but the Client is not and the client
+    connects, the server does not immediately close the connection.
 
 ACKNOWLEDGEMENTS
-       The OpenBSD project: <http://www.openbsd.org>
+    The OpenBSD project: <http://www.openbsd.org>
 
-       Author(s) of the AnyEvent framework:
-       <https://metacpan.org/release/AnyEvent>
+    Author(s) of the AnyEvent framework:
+    <https://metacpan.org/release/AnyEvent>
 
-       Author(s) of Authen::Krb5: <https://metacpan.org/module/Authen::Krb5>
+    Author(s) of Authen::Krb5: <https://metacpan.org/module/Authen::Krb5>
 
 LICENSE AND COPYRIGHT
-       Copyright 2012 Ryan corder, All Rights Reserved.
+    Copyright 2012 Ryan corder, All Rights Reserved.
 
-       This program is free software; you can redistribute it and/or modify it
-       under the same terms as Perl itself.
+    This program is free software; you can redistribute it and/or modify it
+    under the same terms as Perl itself.
 
 DIAGNOSTICS
 CONFIGURATION
