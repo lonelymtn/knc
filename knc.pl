@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-# Time-stamp: <2012-02-09 23:40:14 (ryanc)>
+# Time-stamp: <2012-02-10 00:02:16 (ryanc)>
 #
 # Author: Ryan Corder <ryanc@greengrey.org>
 # Description: knc.pl - Eventual OpenBSD netcat clone with Kerberos support
@@ -193,7 +193,7 @@ sub setup_ae_handle {
                 }
             );
         }
-    ) or AE::log fatal => "Couldn't create AE handle\n";
+    ) or AE::log fatal => "Couldn't create AE handle: $OS_ERROR\n";
 
     return $ae_handle;
 }
@@ -305,7 +305,7 @@ Author(s) of Authen::Krb5: L<https://metacpan.org/module/Authen::Krb5>
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright 2012 Ryan corder, All Rights Reserved.
+Copyright 2012 Ryan Corder, All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the same terms as Perl itself.
