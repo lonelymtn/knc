@@ -15,12 +15,12 @@ USAGE
 
     Kerberized server:
 
-        knc.pl -l -K -N example -T /opt/etc/krb5.keytab 127.0.0.1 12345
+        knc.pl --kerberos encrypt --spn example -l 127.0.0.1 12345
 
     Kerberized client:
 
         kinit -f (You will need a TGT from your KDC first)
-        knc.pl -K -N example 127.0.0.1 12345
+        knc.pl --kerberos encrypt --spn example 127.0.0.1 12345
 
 REQUIRED ARGUMENTS
     The Hostname/IP address and Port of the host you either want to connect
@@ -59,7 +59,7 @@ ACKNOWLEDGEMENTS
     Author(s) of Authen::Krb5: <https://metacpan.org/module/Authen::Krb5>
 
 LICENSE AND COPYRIGHT
-    Copyright 2012 Ryan corder, All Rights Reserved.
+    Copyright 2012 Ryan Corder, All Rights Reserved.
 
     This program is free software; you can redistribute it and/or modify it
     under the same terms as Perl itself.
@@ -69,3 +69,5 @@ CONFIGURATION
 DEPENDENCIES
 INCOMPATIBILITIES
 EXIT STATUS
+    0 for success, 1 for failure.
+

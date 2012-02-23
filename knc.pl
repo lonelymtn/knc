@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-# Time-stamp: <2012-02-22 20:57:55 (ryanc)>
+# Time-stamp: <2012-02-23 13:49:32 (ryanc)>
 #
 # Author: Ryan Corder <ryanc@greengrey.org>
 # Description: knc.pl - Eventual OpenBSD netcat clone with Kerberos support
@@ -14,17 +14,25 @@ use AnyEvent;
 use AnyEvent::Handle;
 use AnyEvent::Log;
 use Authen::Krb5
-    qw(KRB5_NT_SRV_HST AP_OPTS_MUTUAL_REQUIRED ADDRTYPE_INET ADDRTYPE_IPPORT);
-use English qw(-no_match_vars);
-use Getopt::Std;
+    qw( KRB5_NT_SRV_HST AP_OPTS_MUTUAL_REQUIRED ADDRTYPE_INET ADDRTYPE_IPPORT );
+use English qw( -no_match_vars );
+use Getopt::Long qw( :config posix_default bundling auto_version auto_help );
 use IO::Socket;
 
-$Getopt::Std::STANDARD_HELP_VERSION = 'true';
+my %opts = ();
+GetOptions(
+    \%opts,
+    'verbose|v',     # Toggle verbosity
+    'kerberos:s',    # Kerberos options & toggle
+    'keytab=s',      # Path to KRB5 keytab
+    'spn=s',         # KRB5 Service Principal Name
+    'C',             # Send newline as \r\n
+    'k',             # Stay listening after client disconnect
+    'l',             # Listen for incoming connections
+    'help|h' => sub { HELP_MESSAGE() },
+);
 
-my %opts;
-getopts( 'CkKN:lT:v', \%opts );
-
-$opts{'v'} && $AnyEvent::Log::FILTER->level('info');
+$opts{'verbose'} && $AnyEvent::Log::FILTER->level('info');
 
 # Exit early if certain required things are missing
 ( !( $ARGV[0] && $ARGV[1] ) ) && AE::log fatal => HELP_MESSAGE();
@@ -37,7 +45,7 @@ my $socket  = create_socket();      # Socket needed before Kerberos can setup
 my $krb5_ac = q{none};              # We check later for a valid Auth Context
 
 # Set up Kerberos context
-$opts{'K'} && Authen::Krb5::init_context();
+$opts{'kerberos'} && Authen::Krb5::init_context();
 
 # Server mode
 if ( $opts{'l'} ) {
@@ -47,7 +55,7 @@ if ( $opts{'l'} ) {
         while ( my $listener = $socket->accept() ) {
             $ready = AnyEvent->condvar;
 
-            $opts{'K'} && setup_kerberos($listener);
+            $opts{'kerberos'} && setup_kerberos($listener);
 
             my $stdin_handle  = setup_ae_handle( $listener, \*STDOUT );
             my $socket_handle = setup_ae_handle( \*STDIN,   $listener );
@@ -60,7 +68,7 @@ if ( $opts{'l'} ) {
     else {
         my $listener = $socket->accept();
 
-        $opts{'K'} && setup_kerberos($listener);
+        $opts{'kerberos'} && setup_kerberos($listener);
 
         my $stdin_handle  = setup_ae_handle( $listener, \*STDOUT );
         my $socket_handle = setup_ae_handle( \*STDIN,   $listener );
@@ -71,7 +79,7 @@ if ( $opts{'l'} ) {
 
 # Client mode
 else {
-    $opts{'K'} && setup_kerberos($socket);
+    $opts{'kerberos'} && setup_kerberos($socket);
 
     my $stdin_handle  = setup_ae_handle( $socket, \*STDOUT );
     my $socket_handle = setup_ae_handle( \*STDIN, $socket );
@@ -80,7 +88,7 @@ else {
 }
 
 # Tear down Kerberos context
-$opts{'K'} && Authen::Krb5::free_context();
+$opts{'kerberos'} && Authen::Krb5::free_context();
 
 exit;
 
@@ -116,8 +124,8 @@ sub create_socket {
 sub setup_kerberos {
     my $krb5_socket = shift;
 
-    my $krb5_service = $opts{'N'} // q{example};
-    my $krb5_keytab  = $opts{'T'} // q{/etc/krb5.keytab};
+    my $krb5_service = $opts{'spn'}    // q{example};
+    my $krb5_keytab  = $opts{'keytab'} // q{/etc/krb5.keytab};
     my $krb5_spn = Authen::Krb5::sname_to_principal( $host, $krb5_service,
         KRB5_NT_SRV_HST );
 
@@ -140,6 +148,10 @@ sub setup_kerberos {
             $krb5_socket->peerport()
         )
     );
+
+    if ( $opts{'kerberos'} eq 'encrypt' ) {
+        AE::log info => "All messages will be encrypted\n";
+    }
 
     # Server context
     if ( $opts{'l'} ) {
@@ -220,7 +232,7 @@ sub setup_ae_handle {
         },
         on_read => sub {
             if ( ref($fh_in) =~ /IO::Socket::INET/xms ) {
-                if ( $opts{'K'} ) {
+                if ( $opts{'kerberos'} eq 'encrypt' ) {
                     shift->unshift_read(
                         line => qr{__END\015?\012}xms,
                         sub { kr5b_decode_msg( $fh_out, $_[1] ); }
@@ -246,7 +258,7 @@ sub setup_ae_handle {
                     line => sub {
                         my $line = $_[1];
 
-                        if ( $opts{'K'} ) {
+                        if ( $opts{'kerberos'} eq 'encrypt' ) {
                             if ( $krb5_ac eq 'none' ) {
                                 AE::log fatal =>
                                     "Kerberos toggled but AC set to 'none'\n";
@@ -313,8 +325,8 @@ sub kr5b_decode_msg {
 sub HELP_MESSAGE {
     my $help_message = << 'END_HELP';
 
-Usage: knc.pl [-CkKlv] [-N 'service name'] [-T /path/to/krb5.keytab]
-       <hostname> <port>
+Usage: knc.pl [-Ck] [--kerberos [encrypt]] [--keytab /path/to/krb5.keytab]
+       [-l] [--spn 'service name'] [-v] <hostname> <port>
 
 Examples:
     See the README or run this file through perldoc to see examples.
@@ -322,33 +334,35 @@ Examples:
 Syntax:
     -C    Send CRLF as line-ending.
 
-    -k    Forces knc.pl to stay listening for another connection after its
+    -k    Forces knc.pl to stay listening for another connection after the
           current conneciton is completed.  It is an error to use this
           options without the -l option.
 
-    -K    Attempt to perform Kerberos authentication.  If successful, messages
-          will be encrypted between the client and the server.
+    --kerberos [encrypt]
+          Attempt to perform Kerberos authentication.  If successful, and
+          'encrypt' is specified, messages between the client and the server
+          will also be encrypted.
+
+    --keytab <keytab>
+          Specifies an alternative location for your keytab.  The default is
+          /etc/krb5.keytab.
 
     -l    Used to specify that knc.pl should listen for an incoming connection
           rather than initiate a connection to a remote host.
 
-    -v    Have knc.pl give more verbose output.
-
-    -N <service name>
+    --spn <service name>
           Specifies which Kerberized service to attempt to authenticate to.  A
           matching Service Principal Name must exist in your REALM.  The
           default is 'example'
 
-    -T <keytab>
-          Specifies an alternative location for your keytab.  The default is
-          /etc/krb5.keytab.
+    -v    Have knc.pl give more verbose output.
 
 END_HELP
 
     print {*STDERR} $help_message
         or AE::log fatal => "Printing help to STDERR failed: $OS_ERROR.\n";
 
-    return 1;
+    exit 1;
 }
 
 __END__
@@ -373,12 +387,12 @@ Simple client:
 
 Kerberized server:
 
-    knc.pl -l -K -N example -T /opt/etc/krb5.keytab 127.0.0.1 12345
+    knc.pl --kerberos encrypt --spn example -l 127.0.0.1 12345
 
 Kerberized client:
 
     kinit -f (You will need a TGT from your KDC first)
-    knc.pl -K -N example 127.0.0.1 12345
+    knc.pl --kerberos encrypt --spn example 127.0.0.1 12345
 
 =head1 REQUIRED ARGUMENTS
 
@@ -435,5 +449,7 @@ the same terms as Perl itself.
 =head1 INCOMPATIBILITIES
 
 =head1 EXIT STATUS
+
+0 for success, 1 for failure.
 
 =cut
