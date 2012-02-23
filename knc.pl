@@ -1,11 +1,12 @@
 #!/usr/bin/env perl
-# Time-stamp: <2012-02-16 16:57:24 (ryanc)>
+# Time-stamp: <2012-02-22 20:57:55 (ryanc)>
 #
 # Author: Ryan Corder <ryanc@greengrey.org>
 # Description: knc.pl - Eventual OpenBSD netcat clone with Kerberos support
 
 use warnings;
 use strict;
+use 5.010;
 
 our $VERSION = '0.010';
 
@@ -221,36 +222,8 @@ sub setup_ae_handle {
             if ( ref($fh_in) =~ /IO::Socket::INET/xms ) {
                 if ( $opts{'K'} ) {
                     shift->unshift_read(
-                        line => qr{__END\015?\012}xms,    # Custom EOL marker
-                        sub {
-                            if ( $krb5_ac eq 'none' ) {
-                                AE::log fatal =>
-                                    "Kerberos toggled but AC set to 'none'\n";
-                            }
-
-                            my $line =
-                                Authen::Krb5::rd_priv( $krb5_ac, $_[1] );
-
-                            if ( !$line ) {
-                                my $krb5_status = Authen::Krb5::error();
-
-                                # NOT a failure, just an empty message
-                                if ( $krb5_status eq 'Success' ) {
-                                    $line = $line // q{};
-                                }
-                                else {
-                                    AE::log fatal =>
-                                        "Kerberos rd_priv error: $krb5_status\n";
-                                }
-                            }
-
-                            if ( $opts{'C'} ) {
-                                syswrite $fh_out, "$line\r\n";
-                            }
-                            else {
-                                syswrite $fh_out, "$line\n";
-                            }
-                        }
+                        line => qr{__END\015?\012}xms,
+                        sub { kr5b_decode_msg( $fh_out, $_[1] ); }
                     );
                 }
                 else {
@@ -304,6 +277,37 @@ sub setup_ae_handle {
     ) or AE::log fatal => "Couldn't create AE handle: $OS_ERROR\n";
 
     return $ae_handle;
+}
+
+sub kr5b_decode_msg {
+    my ( $fh, $input ) = @_;
+
+    if ( $krb5_ac eq 'none' ) {
+        AE::log fatal => "Kerberos toggled but AC set to 'none'\n";
+    }
+
+    my $line = Authen::Krb5::rd_priv( $krb5_ac, $input );
+
+    if ( !$line ) {
+        my $krb5_status = Authen::Krb5::error();
+
+        # NOT a failure, just an empty message
+        if ( $krb5_status eq 'Success' ) {
+            $line = $line // q{};
+        }
+        else {
+            AE::log fatal => "Kerberos rd_priv error: $krb5_status\n";
+        }
+    }
+
+    if ( $opts{'C'} ) {
+        syswrite $fh, "$line\r\n";
+    }
+    else {
+        syswrite $fh, "$line\n";
+    }
+
+    return 1;
 }
 
 sub HELP_MESSAGE {
