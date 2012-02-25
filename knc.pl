@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-# Time-stamp: <2012-02-24 16:59:19 (ryanc)>
+# Time-stamp: <2012-02-24 17:16:02 (ryanc)>
 #
 # Author: Ryan Corder <ryanc@greengrey.org>
 # Description: knc.pl - Eventual OpenBSD netcat clone with Kerberos support
@@ -360,7 +360,7 @@ sub handle_timeout {
 sub HELP_MESSAGE {
     my $help_message = << 'END_HELP';
 
-Usage: knc.pl [-Cklv] [--kerberos [authonly|encrypt]]
+Usage: knc.pl [-Cklv] [--kerberos authonly | encrypt]
        [--keytab /path/to/krb5.keytab] [--spn 'service name'] [-w timeout]
        <hostname> <port>
 
@@ -374,7 +374,7 @@ Syntax:
           current conneciton is completed.  It is an error to use this
           options without the -l option.
 
-    --kerberos [authonly|encrypt]
+    --kerberos authonly | encrypt
           When set to 'authonly', attempt to perform Kerberos authentication.
           When set to 'encrypt', also attempt to encrypt the messages between
           the cleint and the server.  A setting of 'encrypt' implies
