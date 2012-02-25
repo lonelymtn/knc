@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-# Time-stamp: <2012-02-23 14:02:31 (ryanc)>
+# Time-stamp: <2012-02-24 16:59:19 (ryanc)>
 #
 # Author: Ryan Corder <ryanc@greengrey.org>
 # Description: knc.pl - Eventual OpenBSD netcat clone with Kerberos support
@@ -8,7 +8,7 @@ use warnings;
 use strict;
 use 5.010;
 
-our $VERSION = '0.011';
+our $VERSION = '0.012';
 
 use AnyEvent;
 use AnyEvent::Handle;
@@ -23,26 +23,34 @@ my %opts = ();
 GetOptions(
     \%opts,
     'verbose|v',     # Toggle verbosity
-    'kerberos:s',    # Kerberos options & toggle
+    'kerberos=s',    # Kerberos options & toggle
     'keytab=s',      # Path to KRB5 keytab
     'spn=s',         # KRB5 Service Principal Name
     'C',             # Send newline as \r\n
     'k',             # Stay listening after client disconnect
     'l',             # Listen for incoming connections
+    'w:i',           # Socket && STDIN timeout
     'help|h' => sub { HELP_MESSAGE() },
 );
 
 $opts{'verbose'} && $AnyEvent::Log::FILTER->level('info');
 
-# Exit early if certain required things are missing
+# Checks for invalid option values and combinations
 ( !( $ARGV[0] && $ARGV[1] ) ) && AE::log fatal => HELP_MESSAGE();
 ( $opts{'k'} && ( !$opts{'l'} ) ) && AE::log fatal => HELP_MESSAGE();
+( $opts{'w'} && ( $opts{'l'} ) )  && AE::log fatal => HELP_MESSAGE();
+( $opts{'kerberos'} !~ /authonly|encrypt/xms )
+    && AE::log fatal => HELP_MESSAGE();
 
 my $host    = $ARGV[0];             # IO::Socket::INET does host/ip validaiton
 my $port    = $ARGV[1];             # IO::Socket::INET does port validation
+my $krb5_ac = q{none};              # We check later for a valid Auth Context
 my $ready   = AnyEvent->condvar;    # Set up our "main loop"
 my $socket  = create_socket();      # Socket needed before Kerberos can setup
-my $krb5_ac = q{none};              # We check later for a valid Auth Context
+my %timeout = (
+    $socket => 0,                   # Socket has not timed out by default
+    \*STDIN => 0                    # STDIN has not timed out by default
+);
 
 # Set up Kerberos context
 $opts{'kerberos'} && Authen::Krb5::init_context();
@@ -152,6 +160,9 @@ sub setup_kerberos {
     if ( $opts{'kerberos'} eq 'encrypt' ) {
         AE::log info => "All messages will be encrypted\n";
     }
+    else {
+        AE::log info => "Encryption disabled, authenticating only\n";
+    }
 
     # Server context
     if ( $opts{'l'} ) {
@@ -212,11 +223,17 @@ sub setup_ae_handle {
     my ( $fh_in, $fh_out ) = @_;
 
     my $ae_handle = AnyEvent::Handle->new(
-        fh       => $fh_in,
-        no_delay => 1,
-        on_eof   => sub {
+        fh         => $fh_in,
+        no_delay   => 1,
+        timeout    => $opts{'l'} ? 0 : ( $opts{'w'} // 0 ),
+        on_timeout => sub {
             my ($handle) = @_;
-            undef $handle;
+            handle_timeout( $fh_in, $handle );
+        },
+        on_eof => sub {
+            my ($handle) = @_;
+            AE::log info => "EOF reached on handle: $fh_in\n";
+            $handle->destroy;
             $ready->send;
         },
         on_error => sub {
@@ -226,13 +243,15 @@ sub setup_ae_handle {
             }
             else {
                 AE::log error => "$OS_ERROR\n";
-                undef $handle;
+                $handle->destroy;
                 $ready->send;
             }
         },
         on_read => sub {
+            $timeout{$fh_in} = 0;
+
             if ( ref($fh_in) =~ /IO::Socket::INET/xms ) {
-                if ( $opts{'kerberos'} eq 'encrypt' ) {
+                if ( defined( $opts{'kerberos'} ) eq 'encrypt' ) {
                     shift->unshift_read(
                         line => qr{__END\015?\012}xms,
                         sub { kr5b_decode_msg( $fh_out, $_[1] ); }
@@ -241,13 +260,11 @@ sub setup_ae_handle {
                 else {
                     shift->unshift_read(
                         line => sub {
-                            my $line = $_[1];
-
                             if ( $opts{'C'} ) {
-                                syswrite $fh_out, "$line\r\n";
+                                syswrite $fh_out, "$_[1]\r\n";
                             }
                             else {
-                                syswrite $fh_out, "$line\n";
+                                syswrite $fh_out, "$_[1]\n";
                             }
                         }
                     );
@@ -258,7 +275,7 @@ sub setup_ae_handle {
                     line => sub {
                         my $line = $_[1];
 
-                        if ( $opts{'kerberos'} eq 'encrypt' ) {
+                        if ( defined( $opts{'kerberos'} ) eq 'encrypt' ) {
                             if ( $krb5_ac eq 'none' ) {
                                 AE::log fatal =>
                                     "Kerberos toggled but AC set to 'none'\n";
@@ -286,7 +303,7 @@ sub setup_ae_handle {
                 );
             }
         }
-    ) or AE::log fatal => "Couldn't create AE handle: $OS_ERROR\n";
+    ) or AE::log fatal => "Could not create AE handle: $OS_ERROR\n";
 
     return $ae_handle;
 }
@@ -322,11 +339,30 @@ sub kr5b_decode_msg {
     return 1;
 }
 
+sub handle_timeout {
+    my ( $fh, $handle ) = @_;
+
+    $timeout{$fh} = 1;
+
+    foreach my $toggle ( keys %timeout ) {
+        if ( $timeout{$toggle} == 0 ) {
+            return 1;
+        }
+    }
+
+    AE::log error => "Timeout reached on handle: $fh\n";
+    $handle->destroy;
+    $ready->send;
+
+    return 1;
+}
+
 sub HELP_MESSAGE {
     my $help_message = << 'END_HELP';
 
-Usage: knc.pl [-Ck] [--kerberos [encrypt]] [--keytab /path/to/krb5.keytab]
-       [-l] [--spn 'service name'] [-v] <hostname> <port>
+Usage: knc.pl [-Cklv] [--kerberos [authonly|encrypt]]
+       [--keytab /path/to/krb5.keytab] [--spn 'service name'] [-w timeout]
+       <hostname> <port>
 
 Examples:
     See the README or run this file through perldoc to see examples.
@@ -338,10 +374,11 @@ Syntax:
           current conneciton is completed.  It is an error to use this
           options without the -l option.
 
-    --kerberos [encrypt]
-          Attempt to perform Kerberos authentication.  If successful, and
-          'encrypt' is specified, messages between the client and the server
-          will also be encrypted.
+    --kerberos [authonly|encrypt]
+          When set to 'authonly', attempt to perform Kerberos authentication.
+          When set to 'encrypt', also attempt to encrypt the messages between
+          the cleint and the server.  A setting of 'encrypt' implies
+          'authonly'.
 
     --keytab <keytab>
           Specifies an alternative location for your keytab.  The default is
@@ -356,6 +393,12 @@ Syntax:
           default is 'example'
 
     -v    Have knc.pl give more verbose output.
+
+    -w timeout
+          If a connection and stdin are idle for more than timeout seconds,
+          then the connection is silently closed.  The -w flag has no effect
+          on the -l option, i.e. nc will listen forever for a connection,
+          with or without the -w flag.  The default is no timeout.
 
 END_HELP
 
@@ -373,7 +416,7 @@ knc.pl - Eventual OpenBSD netcat clone with Kerberos support.
 
 =head1 VERSION
 
-This README refers to knc.pl version 0.001.
+This README refers to knc.pl version 0.012.
 
 =head1 USAGE
 
@@ -424,6 +467,11 @@ Many of the features/switches from OpenBSD's netcat are not yet implemented.
 
 If the Server is in Kerberos mode, but the Client is not and the client
 connects, the server does not immediately close the connection.
+
+Timeouts (-w) are done via the AnyEvent handles since IO::Socket::INET doesn't
+seem to implement them even though it has the option to specify it.  Besides,
+nc (the real one) only times out if both the connection and STDIN reach the
+timeout value...so using the handles makes sense.
 
 =head1 ACKNOWLEDGEMENTS
 

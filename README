@@ -2,7 +2,7 @@ NAME
     knc.pl - Eventual OpenBSD netcat clone with Kerberos support.
 
 VERSION
-    This README refers to knc.pl version 0.001.
+    This README refers to knc.pl version 0.012.
 
 USAGE
     Simple server:
@@ -49,6 +49,11 @@ BUGS AND LIMITATIONS
 
     If the Server is in Kerberos mode, but the Client is not and the client
     connects, the server does not immediately close the connection.
+
+    Timeouts (-w) are done via the AnyEvent handles since IO::Socket::INET
+    doesn't seem to implement them even though it has the option to specify
+    it. Besides, nc (the real one) only times out if both the connection and
+    STDIN reach the timeout value...so using the handles makes sense.
 
 ACKNOWLEDGEMENTS
     The OpenBSD project: <http://www.openbsd.org>
