@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-# Time-stamp: <2012-03-01 12:51:10 (ryanc)>
+# Time-stamp: <2012-03-01 15:03:40 (ryanc)>
 #
 # Author: Ryan Corder <ryanc@greengrey.org>
 # Description: knc.pl - Eventual OpenBSD netcat clone with Kerberos support
@@ -8,7 +8,7 @@ use warnings;
 use strict;
 use 5.010;
 
-our $VERSION = '0.012';
+our $VERSION = '0.013';
 
 use AnyEvent;
 use AnyEvent::Handle;
