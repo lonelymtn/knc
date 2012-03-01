@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-# Time-stamp: <2012-02-24 17:16:02 (ryanc)>
+# Time-stamp: <2012-03-01 12:51:10 (ryanc)>
 #
 # Author: Ryan Corder <ryanc@greengrey.org>
 # Description: knc.pl - Eventual OpenBSD netcat clone with Kerberos support
@@ -27,6 +27,7 @@ GetOptions(
     'keytab=s',      # Path to KRB5 keytab
     'spn=s',         # KRB5 Service Principal Name
     'C',             # Send newline as \r\n
+    'd',             # Do not attempt to read from STDIN
     'k',             # Stay listening after client disconnect
     'l',             # Listen for incoming connections
     'w:i',           # Socket && STDIN timeout
@@ -65,8 +66,13 @@ if ( $opts{'l'} ) {
 
             $opts{'kerberos'} && setup_kerberos($listener);
 
-            my $stdin_handle  = setup_ae_handle( $listener, \*STDOUT );
-            my $socket_handle = setup_ae_handle( \*STDIN,   $listener );
+            my $socket_handle  = setup_ae_handle( $listener, \*STDOUT );
+            if ( !$opts{'d'} ) {
+                my $stdin_handle = setup_ae_handle( \*STDIN,   $listener );
+            }
+            else {
+                AE::log info => "Ignoring STDIN\n";
+            }
 
             $ready->recv;
         }
@@ -78,8 +84,13 @@ if ( $opts{'l'} ) {
 
         $opts{'kerberos'} && setup_kerberos($listener);
 
-        my $stdin_handle  = setup_ae_handle( $listener, \*STDOUT );
-        my $socket_handle = setup_ae_handle( \*STDIN,   $listener );
+        my $socket_handle  = setup_ae_handle( $listener, \*STDOUT );
+        if ( !$opts{'d'} ) {
+            my $stdin_handle = setup_ae_handle( \*STDIN,   $listener );
+        }
+        else {
+            AE::log info => "Ignoring STDIN\n";
+        }
 
         $ready->recv;
     }
@@ -89,8 +100,13 @@ if ( $opts{'l'} ) {
 else {
     $opts{'kerberos'} && setup_kerberos($socket);
 
-    my $stdin_handle  = setup_ae_handle( $socket, \*STDOUT );
-    my $socket_handle = setup_ae_handle( \*STDIN, $socket );
+    my $socket_handle  = setup_ae_handle( $socket, \*STDOUT );
+    if ( !$opts{'d'} ) {
+        my $stdin_handle = setup_ae_handle( \*STDIN, $socket );
+    }
+    else {
+        AE::log info => "Ignoring STDIN\n";
+    }
 
     $ready->recv;
 }
@@ -360,7 +376,7 @@ sub handle_timeout {
 sub HELP_MESSAGE {
     my $help_message = << 'END_HELP';
 
-Usage: knc.pl [-Cklv] [--kerberos authonly | encrypt]
+Usage: knc.pl [-Cdklv] [--kerberos authonly | encrypt]
        [--keytab /path/to/krb5.keytab] [--spn 'service name'] [-w timeout]
        <hostname> <port>
 
@@ -369,6 +385,8 @@ Examples:
 
 Syntax:
     -C    Send CRLF as line-ending.
+
+    -d    Do not attempt to read from stdin.
 
     -k    Forces knc.pl to stay listening for another connection after the
           current conneciton is completed.  It is an error to use this
@@ -466,7 +484,9 @@ Ryan Corder, C<ryanc at greengrey.org>
 Many of the features/switches from OpenBSD's netcat are not yet implemented.
 
 If the Server is in Kerberos mode, but the Client is not and the client
-connects, the server does not immediately close the connection.
+connects, the server does not immediately close the connection.  This is
+because the subroutine to handle receving of auth from the client blocks until
+it gets it, if ever.
 
 Timeouts (-w) are done via the AnyEvent handles since IO::Socket::INET doesn't
 seem to implement them even though it has the option to specify it.  Besides,

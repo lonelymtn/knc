@@ -48,7 +48,9 @@ BUGS AND LIMITATIONS
     implemented.
 
     If the Server is in Kerberos mode, but the Client is not and the client
-    connects, the server does not immediately close the connection.
+    connects, the server does not immediately close the connection. This is
+    because the subroutine to handle receving of auth from the client blocks
+    until it gets it, if ever.
 
     Timeouts (-w) are done via the AnyEvent handles since IO::Socket::INET
     doesn't seem to implement them even though it has the option to specify
