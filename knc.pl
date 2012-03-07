@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-# Time-stamp: <2012-03-01 15:03:40 (ryanc)>
+# Time-stamp: <2012-03-07 13:17:01 (ryanc)>
 #
 # Author: Ryan Corder <ryanc@greengrey.org>
 # Description: knc.pl - Eventual OpenBSD netcat clone with Kerberos support
@@ -30,18 +30,17 @@ GetOptions(
     'd',             # Do not attempt to read from STDIN
     'k',             # Stay listening after client disconnect
     'l',             # Listen for incoming connections
-    'w:i',           # Socket && STDIN timeout
+    'q:i',           # Wait N seconds after EOF on STDIN before quitting
+    'w=i',           # Socket && STDIN timeout
     'help|h' => sub { HELP_MESSAGE() },
 );
 
 $opts{'verbose'} && $AnyEvent::Log::FILTER->level('info');
 
 # Checks for invalid option values and combinations
-( !( $ARGV[0] && $ARGV[1] ) ) && AE::log fatal => HELP_MESSAGE();
-( $opts{'k'} && ( !$opts{'l'} ) ) && AE::log fatal => HELP_MESSAGE();
-( $opts{'w'} && ( $opts{'l'} ) )  && AE::log fatal => HELP_MESSAGE();
-( $opts{'kerberos'} !~ /authonly|encrypt/xms )
-    && AE::log fatal => HELP_MESSAGE();
+if ( ( my $opts_status = check_invalid_switch_combos() ) ne 'PASS' ) {
+    AE::log fatal => HELP_MESSAGE($opts_status);
+}
 
 my $host    = $ARGV[0];             # IO::Socket::INET does host/ip validaiton
 my $port    = $ARGV[1];             # IO::Socket::INET does port validation
@@ -66,9 +65,10 @@ if ( $opts{'l'} ) {
 
             $opts{'kerberos'} && setup_kerberos($listener);
 
-            my $socket_handle  = setup_ae_handle( $listener, \*STDOUT );
+            my $socket_handle = setup_ae_handle( $listener, \*STDOUT );
+
             if ( !$opts{'d'} ) {
-                my $stdin_handle = setup_ae_handle( \*STDIN,   $listener );
+                my $stdin_handle = setup_ae_handle( \*STDIN, $listener );
             }
             else {
                 AE::log info => "Ignoring STDIN\n";
@@ -84,9 +84,10 @@ if ( $opts{'l'} ) {
 
         $opts{'kerberos'} && setup_kerberos($listener);
 
-        my $socket_handle  = setup_ae_handle( $listener, \*STDOUT );
+        my $socket_handle = setup_ae_handle( $listener, \*STDOUT );
+
         if ( !$opts{'d'} ) {
-            my $stdin_handle = setup_ae_handle( \*STDIN,   $listener );
+            my $stdin_handle = setup_ae_handle( \*STDIN, $listener );
         }
         else {
             AE::log info => "Ignoring STDIN\n";
@@ -100,7 +101,8 @@ if ( $opts{'l'} ) {
 else {
     $opts{'kerberos'} && setup_kerberos($socket);
 
-    my $socket_handle  = setup_ae_handle( $socket, \*STDOUT );
+    my $socket_handle = setup_ae_handle( $socket, \*STDOUT );
+
     if ( !$opts{'d'} ) {
         my $stdin_handle = setup_ae_handle( \*STDIN, $socket );
     }
@@ -248,12 +250,22 @@ sub setup_ae_handle {
         },
         on_eof => sub {
             my ($handle) = @_;
+
+            if ( $fh_in eq \*STDIN ) {
+                if ( defined( $opts{'q'} ) > 0 ) {
+                    AE::log info =>
+                        "Sleeping $opts{'q'} seconds before quitting\n";
+                    sleep $opts{'q'};
+                }
+            }
+
             AE::log info => "EOF reached on handle: $fh_in\n";
             $handle->destroy;
             $ready->send;
         },
         on_error => sub {
             my ( $handle, $fatal, $message ) = @_;
+
             if ($fatal) {
                 $ready->croak($message);
             }
@@ -373,13 +385,29 @@ sub handle_timeout {
     return 1;
 }
 
-sub HELP_MESSAGE {
-    my $help_message = << 'END_HELP';
+sub check_invalid_switch_combos {
+    ( !( $ARGV[0] && $ARGV[1] ) ) && return "Host or Port missing\n";
+    ( $opts{'k'} && ( !$opts{'l'} ) ) && return "Must use -l with -k\n";
+    ( $opts{'w'} && ( !$opts{'l'} ) ) && return "Must use -l with -w\n";
 
-Usage: knc.pl [-Cdklv] [--kerberos authonly | encrypt]
+    if ( $opts{'kerberos'} ) {
+        if ( $opts{'kerberos'} !~ /authonly|encrypt/xms ) {
+            return "Invalid Kerberos option: $opts{'kerberos'}\n";
+        }
+    }
+
+    return 'PASS';
+}
+
+sub HELP_MESSAGE {
+    my $prepend_msg   = shift;
+    my $short_message = << 'END_SHORT';
+Usage: knc.pl [-Cdklqv] [--kerberos authonly | encrypt]
        [--keytab /path/to/krb5.keytab] [--spn 'service name'] [-w timeout]
        <hostname> <port>
+END_SHORT
 
+    my $help_message = << 'END_HELP';
 Examples:
     See the README or run this file through perldoc to see examples.
 
@@ -405,6 +433,10 @@ Syntax:
     -l    Used to specify that knc.pl should listen for an incoming connection
           rather than initiate a connection to a remote host.
 
+    -q
+          After EOF on STDIN, wait the specified number of seconds and then
+          quit.  If seconds is negative, wait forever.
+
     --spn <service name>
           Specifies which Kerberized service to attempt to authenticate to.  A
           matching Service Principal Name must exist in your REALM.  The
@@ -417,8 +449,15 @@ Syntax:
           then the connection is silently closed.  The -w flag has no effect
           on the -l option, i.e. nc will listen forever for a connection,
           with or without the -w flag.  The default is no timeout.
-
 END_HELP
+
+    if ( defined($prepend_msg) ne q{} ) {
+        $help_message =
+            "$PROGRAM_NAME: " . $prepend_msg . "\n" . $short_message;
+    }
+    else {
+        $help_message = $short_message . "\n" . $help_message;
+    }
 
     print {*STDERR} $help_message
         or AE::log fatal => "Printing help to STDERR failed: $OS_ERROR.\n";
