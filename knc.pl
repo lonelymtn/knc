@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-# Time-stamp: <2012-03-07 13:21:17 (ryanc)>
+# Time-stamp: <2012-07-18 12:04:56 (ryanc)>
 #
 # Author: Ryan Corder <ryanc@greengrey.org>
 # Description: knc.pl - Eventual OpenBSD netcat clone with Kerberos support
@@ -416,6 +416,8 @@ Syntax:
 
     -d    Do not attempt to read from stdin.
 
+    -h    Prints out knc.pl help.
+
     -k    Forces knc.pl to stay listening for another connection after the
           current conneciton is completed.  It is an error to use this
           options without the -l option.
@@ -433,9 +435,9 @@ Syntax:
     -l    Used to specify that knc.pl should listen for an incoming connection
           rather than initiate a connection to a remote host.
 
-    -q
+    -q <wait time in seconds>
           After EOF on STDIN, wait the specified number of seconds and then
-          quit.  If seconds is negative, wait forever.
+          quit.
 
     --spn <service name>
           Specifies which Kerberized service to attempt to authenticate to.  A
@@ -444,7 +446,7 @@ Syntax:
 
     -v    Have knc.pl give more verbose output.
 
-    -w timeout
+    -w <timeout in seconds>
           If a connection and stdin are idle for more than timeout seconds,
           then the connection is silently closed.  The -w flag has no effect
           on the -l option, i.e. nc will listen forever for a connection,
